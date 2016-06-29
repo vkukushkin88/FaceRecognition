@@ -1,6 +1,8 @@
+import os
 import cv2
 import sys
 import time
+import pickle
 import random
 import argparse
 
@@ -16,6 +18,8 @@ RECOGNISHN_SCORE = 0.01
 RADIUS = 4
 NUM_POINTS = 4 * RADIUS
 
+DUMP_FILE = './dump_faces.lbph'
+
 
 class FaceRecognizer(object):
 
@@ -28,6 +32,7 @@ class FaceRecognizer(object):
 
         self.X_test = []
         self.X_name = []
+        self.__load_dump()
         self.font = cv2.FONT_HERSHEY_SIMPLEX
 
         self._colors = [color.strip().split(',') for color in open('colors.txt', 'r').readlines() if color.strip()]
@@ -77,12 +82,11 @@ class FaceRecognizer(object):
 
     def recognize_face(self, frame, face, coordinates):
         # Recognizing is second part of our tool. It is more complex that
-        # simple detection. This recognizing 
+        # simple detection. This recognizing is based on
+        # Local Binary Patterns Histograms (LBPH) method
+        # Calculate the histogram
         face_gray = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
         lbp = local_binary_pattern(face_gray, NUM_POINTS, RADIUS, method='uniform')
-        # cv2.imshow('win_name', lbp)
-        # cv2.waitKey(0)
-        # Calculate the histogram
         x = itemfreq(lbp.ravel())
         # Normalize the histogram
         hist = x[:, 1] / sum(x[:, 1])
@@ -112,27 +116,36 @@ class FaceRecognizer(object):
         else:
             win_name = 'Detected new Face, do you know why it is?'
             cv2.imshow(win_name, face)
-            cv2.waitKey(0)
+            cv2.waitKey(500)
             self.ask_whois(hist)
             cv2.destroyWindow(win_name)
-
-        # cv2.imshow('Detected face', face)
 
     def ask_whois(self, hist):
         name = raw_input('Detected new face, who is this? ')
         self.X_test.append(hist)
         self.X_name.append(name)
-        # X_name.append(train_image)
-        # # Append histogram to X_name
-        # X_test.append(hist)
-        # # Append class label in y_test
-        # y_test.append(train_dic[os.path.split(train_image)[1]])
 
     def __crop_face(self, img, x, y, w, h):
         return img[y:y+h, x:x+w]
 
     def __get_random_color(self):
         return random.randrange(len(self._colors))
+
+    def __save_dump(self):
+        dump_file = open(DUMP_FILE, 'wb')
+        pickle.dump((self.X_name, self.X_test), dump_file)
+        dump_file.close()
+
+    def __load_dump(self):
+        if os.path.exists(DUMP_FILE):
+            dump_file = open(DUMP_FILE, 'rb')
+            try:
+                self.X_name, self.X_test = pickle.load(dump_file)
+            except Exception:
+                # ignore incorrect reading information from file
+                pass
+            finally:
+                dump_file.close()
 
     def run(self):
         # Initialize webcam (by default use camera with index 0)
@@ -144,6 +157,7 @@ class FaceRecognizer(object):
             # When everything is done, release the capture
             self.video_capture.release()
             cv2.destroyAllWindows()
+            self.__save_dump()
 
 
 def parse_args():
